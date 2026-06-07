@@ -181,6 +181,66 @@
     color: #ff6060;
     box-shadow: 0 0 12px rgba(255,60,60,0.2);
   }
+
+  /* ─── Touch Controller ─────────────────────────────────────────── */
+  #touch-controls {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    margin-top: 18px;
+  }
+  .touch-row {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    justify-content: center;
+  }
+  .t-btn {
+    width: 56px; height: 56px;
+    background: linear-gradient(145deg, rgba(255,255,255,0.08), rgba(255,255,255,0.02));
+    border: 1px solid rgba(0,200,255,0.25);
+    border-radius: 12px;
+    color: rgba(0,220,255,0.85);
+    font-size: 22px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.08);
+    transition: all 0.08s;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+  }
+  .t-btn:active, .t-btn.pressed {
+    background: linear-gradient(145deg, rgba(0,200,255,0.2), rgba(0,200,255,0.05));
+    border-color: rgba(0,200,255,0.6);
+    color: #00f5ff;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.4), 0 0 16px rgba(0,245,255,0.3), inset 0 1px 0 rgba(255,255,255,0.1);
+    transform: scale(0.93) translateY(1px);
+  }
+  .t-btn.drop-btn {
+    width: 122px; height: 48px;
+    font-size: 13px;
+    letter-spacing: 3px;
+    border-color: rgba(0,200,255,0.2);
+    color: rgba(0,220,255,0.7);
+    border-radius: 10px;
+  }
+  .t-btn.drop-btn:active, .t-btn.drop-btn.pressed {
+    border-color: rgba(0,200,255,0.55);
+    color: #00f5ff;
+  }
+  .t-btn.rotate-btn {
+    background: linear-gradient(145deg, rgba(180,0,255,0.12), rgba(180,0,255,0.03));
+    border-color: rgba(180,80,255,0.3);
+    color: rgba(200,120,255,0.85);
+  }
+  .t-btn.rotate-btn:active, .t-btn.rotate-btn.pressed {
+    background: linear-gradient(145deg, rgba(180,0,255,0.25), rgba(180,0,255,0.08));
+    border-color: rgba(200,100,255,0.7);
+    color: #d070ff;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.4), 0 0 16px rgba(180,0,255,0.35), inset 0 1px 0 rgba(255,255,255,0.1);
+  }
+  .t-spacer { width: 56px; height: 56px; } /* invisible spacer */
 </style>
 </head>
 <body>
@@ -209,6 +269,7 @@
   </div>
 
   <!-- Board -->
+  <div id="board-col" style="display:flex;flex-direction:column;align-items:center;">
   <div id="board-wrap">
     <div id="board"></div>
     <div class="overlay" id="overlay">
@@ -217,6 +278,24 @@
       <button id="start-btn">START</button>
     </div>
   </div>
+
+  <!-- Touch Controls -->
+  <div id="touch-controls">
+    <div class="touch-row">
+      <div class="t-spacer"></div>
+      <button class="t-btn rotate-btn" id="btn-rotate">↻</button>
+      <div class="t-spacer"></div>
+    </div>
+    <div class="touch-row">
+      <button class="t-btn" id="btn-left">◀</button>
+      <button class="t-btn" id="btn-down">▼</button>
+      <button class="t-btn" id="btn-right">▶</button>
+    </div>
+    <div class="touch-row">
+      <button class="t-btn drop-btn" id="btn-drop">SPACE DROP</button>
+    </div>
+  </div>
+  </div><!-- /board-col -->
 
   <!-- Right -->
   <div id="right-panel">
@@ -751,6 +830,100 @@ startBtn.addEventListener('click', () => {
   if (po) po.remove();
   spawn();
 });
+
+// ─── Touch / Click Controls ──────────────────────────────────────────────────
+function doAction(action) {
+  if (!started || gameOver || paused) return;
+  if (action === 'left') {
+    const np = {x: pos.x-1, y: pos.y};
+    if (valid(board, piece.shape, np)) { pos = np; sfxMove(); render(); }
+  } else if (action === 'right') {
+    const np = {x: pos.x+1, y: pos.y};
+    if (valid(board, piece.shape, np)) { pos = np; sfxMove(); render(); }
+  } else if (action === 'down') {
+    const np = {x: pos.x, y: pos.y+1};
+    if (valid(board, piece.shape, np)) { pos = np; render(); }
+    else lock();
+  } else if (action === 'rotate') {
+    const rot = rotate(piece.shape);
+    if (valid(board, rot, pos)) { piece = {...piece, shape: rot}; sfxRotate(); render(); }
+  } else if (action === 'drop') {
+    hardDrop();
+  }
+}
+
+// Auto-repeat for left/right/down while held
+let repeatId = null, repeatDelay = null;
+function startRepeat(action, delay) {
+  stopRepeat();
+  doAction(action);
+  repeatDelay = setTimeout(() => {
+    repeatId = setInterval(() => doAction(action), 80);
+  }, delay || 200);
+}
+function stopRepeat() {
+  if (repeatId) { clearInterval(repeatId); repeatId = null; }
+  if (repeatDelay) { clearTimeout(repeatDelay); repeatDelay = null; }
+}
+
+function bindBtn(id, action, repeat) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  // Touch
+  el.addEventListener('touchstart', e => {
+    e.preventDefault();
+    resumeAC();
+    el.classList.add('pressed');
+    if (repeat) startRepeat(action);
+    else doAction(action);
+  }, { passive: false });
+  el.addEventListener('touchend', e => {
+    e.preventDefault();
+    el.classList.remove('pressed');
+    if (repeat) stopRepeat();
+  }, { passive: false });
+  // Mouse (desktop testing)
+  el.addEventListener('mousedown', e => {
+    resumeAC();
+    el.classList.add('pressed');
+    if (repeat) startRepeat(action);
+    else doAction(action);
+  });
+  el.addEventListener('mouseup', () => {
+    el.classList.remove('pressed');
+    if (repeat) stopRepeat();
+  });
+  el.addEventListener('mouseleave', () => {
+    el.classList.remove('pressed');
+    if (repeat) stopRepeat();
+  });
+}
+
+bindBtn('btn-left',   'left',   true);
+bindBtn('btn-right',  'right',  true);
+bindBtn('btn-down',   'down',   true);
+bindBtn('btn-rotate', 'rotate', false);
+bindBtn('btn-drop',   'drop',   false);
+
+// Swipe gesture on board
+let touchStartX = 0, touchStartY = 0, touchStartTime = 0;
+document.getElementById('board').addEventListener('touchstart', e => {
+  touchStartX = e.touches[0].clientX;
+  touchStartY = e.touches[0].clientY;
+  touchStartTime = Date.now();
+}, { passive: true });
+document.getElementById('board').addEventListener('touchend', e => {
+  if (!started || gameOver || paused) return;
+  const dx = e.changedTouches[0].clientX - touchStartX;
+  const dy = e.changedTouches[0].clientY - touchStartY;
+  const dt = Date.now() - touchStartTime;
+  const absDx = Math.abs(dx), absDy = Math.abs(dy);
+  if (dt < 250 && absDx < 10 && absDy < 10) {
+    // tap on board = rotate
+    doAction('rotate');
+  }
+}, { passive: true });
+
 </script>
 </body>
 </html>
