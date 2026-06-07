@@ -2,11 +2,14 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
 <title>TETRIS</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
-    background: radial-gradient(ellipse at 25% 15%, #0a0a2e 0%, #03030f 55%, #000 100%);
+    background: #000;
     min-height: 100vh;
     display: flex;
     align-items: center;
@@ -14,16 +17,29 @@
     font-family: 'Courier New', monospace;
     user-select: none;
     overflow: hidden;
+    touch-action: none;
+    overscroll-behavior: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
   }
   body::before {
     content: '';
     position: fixed; inset: 0; pointer-events: none;
-    background-image:
-      linear-gradient(rgba(0,180,255,0.025) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(0,180,255,0.025) 1px, transparent 1px);
-    background-size: 48px 48px;
+    background: transparent;
   }
-  #app { display: flex; gap: 28px; align-items: flex-start; }
+  #space-canvas {
+    position: fixed; inset: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+    z-index: 0;
+  }
+  #app {
+    position: relative;
+    z-index: 1;
+  }
+  #app { display: flex; gap: 28px; align-items: flex-start; touch-action: none; position: relative; z-index: 1; }
+  #board { touch-action: none; }
+  #board-wrap { touch-action: none; }
 
   /* Panels */
   .panel {
@@ -241,9 +257,189 @@
     box-shadow: 0 2px 6px rgba(0,0,0,0.4), 0 0 16px rgba(180,0,255,0.35), inset 0 1px 0 rgba(255,255,255,0.1);
   }
   .t-spacer { width: 56px; height: 56px; } /* invisible spacer */
+
+  /* ── SpaceX Rocket Launch Overlay ─────────────────────────────── */
+  #launch-overlay {
+    position: fixed; inset: 0;
+    pointer-events: none;
+    z-index: 999;
+    overflow: hidden;
+  }
+  /* Rocket SVG container */
+  .rocket-wrap {
+    position: absolute;
+    bottom: -180px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 60px;
+    transition: none;
+  }
+  .rocket-wrap.launching {
+    animation: rocketLaunch 3.5s cubic-bezier(0.3, 0, 0.6, 1) forwards;
+  }
+  @keyframes rocketLaunch {
+    0%   { bottom: -180px; opacity: 1; transform: translateX(-50%) rotate(0deg); }
+    8%   { bottom: -60px;  opacity: 1; transform: translateX(-50%) rotate(-1deg); }
+    20%  { bottom: 15%;    opacity: 1; transform: translateX(-50%) rotate(1deg); }
+    50%  { bottom: 55%;    opacity: 1; transform: translateX(-50%) rotate(-0.5deg); }
+    80%  { bottom: 90%;    opacity: 0.7; transform: translateX(-50%) rotate(0.5deg); }
+    100% { bottom: 130%;   opacity: 0;   transform: translateX(-50%) rotate(0deg); }
+  }
+  /* Exhaust flame */
+  .exhaust {
+    position: absolute;
+    bottom: -28px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 22px;
+    pointer-events: none;
+  }
+  .flame-core {
+    width: 12px; height: 0;
+    margin: 0 auto;
+    border-radius: 50%;
+    background: #fff;
+    animation: flameCore 0.07s infinite alternate;
+    box-shadow: 0 0 8px 4px #fff, 0 0 20px 8px #ff9500, 0 0 40px 16px #ff4400;
+  }
+  .flame-outer {
+    width: 22px; height: 0;
+    margin: 0 auto;
+    margin-top: -4px;
+    border-radius: 50%;
+    background: transparent;
+    animation: flameOuter 0.09s infinite alternate;
+    box-shadow: 0 0 16px 10px #ff6600aa, 0 0 40px 20px #ff220066, 0 0 70px 30px #ff000033;
+  }
+  @keyframes flameCore {
+    from { height: 30px; box-shadow: 0 0 8px 4px #fff, 0 0 20px 8px #ff9500, 0 0 40px 16px #ff4400; }
+    to   { height: 42px; box-shadow: 0 0 12px 6px #fff, 0 0 30px 12px #ffbb00, 0 0 60px 24px #ff6600; }
+  }
+  @keyframes flameOuter {
+    from { height: 55px; }
+    to   { height: 75px; }
+  }
+  /* Launch smoke ring */
+  .smoke-ring {
+    position: absolute;
+    bottom: -10px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: rgba(200,200,200,0.0);
+    box-shadow: 0 0 0 0 rgba(200,180,160,0.6);
+    animation: smokeExpand 2s ease-out infinite;
+  }
+  .smoke-ring:nth-child(2) { animation-delay: 0.4s; }
+  .smoke-ring:nth-child(3) { animation-delay: 0.8s; }
+  @keyframes smokeExpand {
+    0%   { box-shadow: 0 0 0 0 rgba(200,180,160,0.5); }
+    100% { box-shadow: 0 0 0 80px rgba(200,180,160,0); }
+  }
+  /* Ground glow under rocket */
+  .launch-glow {
+    position: absolute;
+    bottom: -20px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 120px; height: 30px;
+    border-radius: 50%;
+    background: radial-gradient(ellipse, rgba(255,120,0,0.7) 0%, rgba(255,50,0,0.3) 40%, transparent 70%);
+    animation: glowPulse 0.15s infinite alternate;
+  }
+  @keyframes glowPulse {
+    from { opacity: 0.7; transform: translateX(-50%) scaleX(1); }
+    to   { opacity: 1.0; transform: translateX(-50%) scaleX(1.15); }
+  }
+  /* Gameover rocket crash animation */
+  .rocket-wrap.crashing {
+    animation: rocketCrash 1.2s ease-in forwards;
+  }
+  @keyframes rocketCrash {
+    0%   { bottom: 60%; opacity: 1; transform: translateX(-50%) rotate(0deg); }
+    40%  { bottom: 40%; opacity: 1; transform: translateX(-30%) rotate(25deg); }
+    70%  { bottom: 15%; opacity: 1; transform: translateX(20%) rotate(60deg); }
+    90%  { bottom: -5%; opacity: 0.6; transform: translateX(40%) rotate(90deg); }
+    100% { bottom: -150px; opacity: 0; transform: translateX(50%) rotate(100deg); }
+  }
+  /* Lv3+ spiral orbit */
+  .rocket-wrap.orbit {
+    animation: rocketOrbit 4s ease-in-out forwards;
+  }
+  @keyframes rocketOrbit {
+    0%   { bottom:-180px; left:50%; opacity:1; transform:translateX(-50%) rotate(0deg); }
+    15%  { bottom:20%;    left:50%; opacity:1; transform:translateX(-50%) rotate(5deg); }
+    35%  { bottom:45%;    left:68%; opacity:1; transform:translateX(-50%) rotate(20deg); }
+    55%  { bottom:65%;    left:32%; opacity:1; transform:translateX(-50%) rotate(-15deg); }
+    75%  { bottom:85%;    left:60%; opacity:0.7; transform:translateX(-50%) rotate(10deg); }
+    100% { bottom:130%;   left:50%; opacity:0; transform:translateX(-50%) rotate(0deg); }
+  }
+  /* Lv5+ fast diagonal */
+  .rocket-wrap.diagonal {
+    animation: rocketDiag 2.2s cubic-bezier(0.2,0,0.5,1) forwards;
+  }
+  @keyframes rocketDiag {
+    0%   { bottom:-180px; left:20%; opacity:1; transform:rotate(-30deg); }
+    30%  { bottom:30%;    left:35%; opacity:1; transform:rotate(-25deg); }
+    70%  { bottom:75%;    left:60%; opacity:0.8; transform:rotate(-20deg); }
+    100% { bottom:130%;   left:80%; opacity:0; transform:rotate(-18deg); }
+  }
+  /* Lv5+ second diagonal (right to left) */
+  .rocket-wrap.diagonal-r {
+    animation: rocketDiagR 2.2s cubic-bezier(0.2,0,0.5,1) forwards;
+  }
+  @keyframes rocketDiagR {
+    0%   { bottom:-180px; left:80%; opacity:1; transform:rotate(30deg); }
+    30%  { bottom:30%;    left:65%; opacity:1; transform:rotate(25deg); }
+    70%  { bottom:75%;    left:40%; opacity:0.8; transform:rotate(20deg); }
+    100% { bottom:130%;   left:20%; opacity:0; transform:rotate(18deg); }
+  }
+  /* Lv7+ boosted: fast straight center, bigger flame */
+  .rocket-wrap.boosted {
+    animation: rocketBoost 2.0s cubic-bezier(0.1,0,0.4,1) forwards;
+  }
+  @keyframes rocketBoost {
+    0%   { bottom:-180px; opacity:1; transform:translateX(-50%) scale(1) rotate(0deg); }
+    10%  { bottom:5%;     opacity:1; transform:translateX(-50%) scale(1.1) rotate(-2deg); }
+    40%  { bottom:50%;    opacity:1; transform:translateX(-50%) scale(1.05) rotate(1deg); }
+    100% { bottom:140%;   opacity:0; transform:translateX(-50%) scale(0.8) rotate(0deg); }
+  }
+  /* Lv10+ triple center fast */
+  .rocket-wrap.hyper {
+    animation: rocketHyper 1.6s cubic-bezier(0.05,0,0.3,1) forwards;
+  }
+  @keyframes rocketHyper {
+    0%   { bottom:-180px; opacity:1; transform:translateX(-50%) scaleY(1); }
+    5%   { bottom:0;      opacity:1; transform:translateX(-50%) scaleY(1.15); }
+    100% { bottom:150%;   opacity:0; transform:translateX(-50%) scaleY(0.9); }
+  }
+  /* Screen flash on high-level launch */
+  @keyframes screenFlash {
+    0%   { opacity:0; }
+    20%  { opacity:0.18; }
+    100% { opacity:0; }
+  }
+  #launch-flash {
+    position:fixed; inset:0; pointer-events:none; z-index:998;
+    background: radial-gradient(ellipse at 50% 100%, #ff8800 0%, #ff4400 30%, transparent 70%);
+    opacity:0;
+  }
+  #launch-flash.flashing {
+    animation: screenFlash 0.6s ease-out forwards;
+  }
+  @keyframes milestoneAnim {
+    0%   { opacity:0; transform:translate(-50%,-50%) scale(0.6); }
+    15%  { opacity:1; transform:translate(-50%,-60%) scale(1.15); }
+    60%  { opacity:1; transform:translate(-50%,-65%) scale(1.0); }
+    100% { opacity:0; transform:translate(-50%,-80%) scale(0.9); }
+  }
 </style>
 </head>
 <body>
+<canvas id="space-canvas"></canvas>
+<div id="launch-overlay"></div>
+<div id="launch-flash"></div>
 <div id="app">
   <!-- Left -->
   <div id="left-panel">
@@ -310,6 +506,27 @@
 </div>
 
 <script>
+// ─── Block default touch behaviors (pinch zoom, scroll, double-tap zoom) ────
+document.addEventListener('touchstart', e => {
+  if (e.touches.length > 1) e.preventDefault(); // block pinch zoom
+}, { passive: false });
+
+document.addEventListener('touchmove', e => {
+  e.preventDefault(); // block scroll & pinch zoom during game
+}, { passive: false });
+
+document.addEventListener('touchend', e => {
+  if (e.touches.length > 0) e.preventDefault();
+}, { passive: false });
+
+// Block double-tap zoom
+let lastTap = 0;
+document.addEventListener('touchend', e => {
+  const now = Date.now();
+  if (now - lastTap < 300) e.preventDefault();
+  lastTap = now;
+}, { passive: false });
+
 // ─── Audio Engine ───────────────────────────────────────────────────────────
 const AC = new (window.AudioContext || window.webkitAudioContext)();
 let bgmOn = false;
@@ -395,66 +612,208 @@ function sfxGameOver() {
   });
 }
 
-// ─── BGM (Korobeiniki inspired arpeggiated chords) ───────────────────────
-// Melody notes: simplified Tetris theme in frequencies
-const MELODY = [
-  659,494,523,587,523,494,440,440,523,659,587,523,494,523,587,659,523,440,440,
-  587,698,880,784,698,659,523,659,587,523,494,494,523,587,659,523,440,440,0
-].map((f,i) => ({f, dur: i % 4 === 3 ? 0.5 : 0.25}));
+// ─── BGM : Korobeiniki (A-Type) Full arrangement ─────────────────────────
+// 완전한 코로베이니키 악보 기반
+// 멜로디(리드) + 카운터멜로디 + 베이스라인 + 화음 4성부 구성
+// BPM 150 기준 8분음표 = 0.2s
+
+const BPM = 150;
+const B  = 60 / BPM;       // 4분음표 = 0.4s
+const S  = B / 2;          // 8분음표 = 0.2s
+const Q  = B / 4;          // 16분음표 = 0.1s
+const D  = B * 1.5;        // 점4분 = 0.6s
+
+// 주멜로디 (A파트 + B파트 완전판)
+// [주파수, 길이]
+const MELODY_A = [
+  [659,B],[494,S],[523,S],[587,B],[523,S],[494,S],
+  [440,B],[440,S],[523,S],[659,B],[587,S],[523,S],
+  [494,D],[523,S],[587,B],[659,B],
+  [523,B],[440,B],[440,B],[0,B],
+
+  [587,B],[698,S],[880,S],[784,B],[698,S],[659,S],
+  [523,B],[659,S],[587,S],[523,S],[494,S],[494,B],[523,S],
+  [587,B],[659,B],[523,B],[440,B],[440,B],[0,B],
+
+  [659,B],[494,S],[523,S],[587,B],[523,S],[494,S],
+  [440,B],[440,S],[523,S],[659,B],[587,S],[523,S],
+  [494,D],[523,S],[587,B],[659,B],
+  [523,B],[440,B],[440,B],[0,B],
+
+  [587,B],[698,S],[880,S],[784,B],[698,S],[659,S],
+  [523,B],[659,S],[587,S],[523,S],[494,S],[494,B],[523,S],
+  [587,B],[659,B],[523,B],[440,B],[440,B],[0,B],
+];
+
+// B파트 (브릿지)
+const MELODY_B = [
+  [330,D],[392,S],[330,B],[294,B],[330,B],[349,B],
+  [392,B],[330,B],[294,D],[262,S],[294,B],[330,B],
+  [392,B],[349,B],[330,B],[294,B],[330,D],[392,S],
+  [523,B],[494,B],[440,B],[392,B],
+
+  [330,D],[392,S],[330,B],[294,B],[330,B],[349,B],
+  [392,B],[330,B],[294,D],[262,S],[294,B],[330,B],
+  [392,B],[349,B],[330,B],[294,B],[330,D],[392,S],
+  [523,B],[0,B],[0,B],[0,B],
+];
+
+const FULL_MELODY = [...MELODY_A, ...MELODY_B];
+
+// 베이스라인 (낮은 옥타브 반주, 각 마디마다 박자 채우기)
+// E2=82, A2=110, D3=147, G2=98, C3=131, F2=87, B2=123
+const BASS_PATTERN = [
+  [165,B],[165,B], [110,B],[110,B], [131,B],[131,B], [110,B],[110,B],
+  [147,B],[147,B], [131,B],[131,B], [110,B],[110,B], [110,B],[110,B],
+  [165,B],[165,B], [110,B],[110,B], [131,B],[131,B], [110,B],[110,B],
+  [147,B],[147,B], [131,B],[131,B], [110,B],[110,B], [110,B],[110,B],
+
+  [147,B],[147,B], [131,B],[131,B], [110,B],[110,B], [98,B],[98,B],
+  [131,B],[131,B], [110,B],[110,B], [98,B],[98,B],  [98,B],[98,B],
+  [147,B],[147,B], [131,B],[131,B], [110,B],[110,B], [98,B],[98,B],
+  [131,B],[131,B], [110,B],[110,B], [98,B],[98,B],  [98,B],[98,B],
+
+  [165,B],[165,B], [110,B],[110,B], [131,B],[131,B], [110,B],[110,B],
+  [147,B],[147,B], [131,B],[131,B], [110,B],[110,B], [110,B],[110,B],
+  [165,B],[165,B], [110,B],[110,B], [131,B],[131,B], [110,B],[110,B],
+  [147,B],[147,B], [131,B],[131,B], [110,B],[110,B], [110,B],[110,B],
+
+  [147,B],[147,B], [131,B],[131,B], [110,B],[110,B], [98,B],[98,B],
+  [131,B],[131,B], [110,B],[110,B], [98,B],[98,B],  [98,B],[98,B],
+  [147,B],[147,B], [131,B],[131,B], [110,B],[110,B], [98,B],[98,B],
+  [131,B],[131,B], [110,B],[110,B], [98,B],[98,B],  [98,B],[98,B],
+
+  // B파트 베이스
+  [82,B],[82,B], [98,B],[98,B], [110,B],[110,B], [87,B],[87,B],
+  [98,B],[98,B], [82,B],[82,B], [98,B],[98,B], [98,B],[98,B],
+  [82,B],[82,B], [98,B],[98,B], [110,B],[110,B], [87,B],[87,B],
+  [98,B],[98,B], [82,B],[82,B], [98,B],[98,B], [98,B],[98,B],
+  [82,B],[82,B], [98,B],[98,B], [110,B],[110,B], [87,B],[87,B],
+  [98,B],[98,B], [82,B],[82,B], [98,B],[98,B], [98,B],[98,B],
+  [82,B],[82,B], [98,B],[98,B], [110,B],[110,B], [87,B],[87,B],
+  [98,B],[98,B], [82,B],[82,B], [98,B],[98,B], [98,B],[98,B],
+];
 
 let bgmInterval = null;
 let melodyIdx = 0;
+let bassIdx = 0;
 let bgmGain = null;
+let bgmMasterGain = null;
+let bgmCompressor = null;
+
+function makeOsc(freq, type, startT, dur, gainVal, gainNode, detune) {
+  if (!freq || freq === 0) return;
+  const osc = AC.createOscillator();
+  const g = AC.createGain();
+  osc.connect(g); g.connect(gainNode);
+  osc.type = type;
+  osc.frequency.value = freq;
+  if (detune) osc.detune.value = detune;
+  g.gain.setValueAtTime(0, startT);
+  g.gain.linearRampToValueAtTime(gainVal, startT + 0.01);
+  g.gain.setValueAtTime(gainVal, startT + dur * 0.7);
+  g.gain.exponentialRampToValueAtTime(0.0001, startT + dur * 0.95);
+  osc.start(startT);
+  osc.stop(startT + dur + 0.02);
+}
 
 function startBGM() {
   if (bgmOn) return;
   bgmOn = true;
   resumeAC();
-  bgmGain = AC.createGain();
-  bgmGain.gain.value = 0.12;
-  bgmGain.connect(AC.destination);
 
-  let t = AC.currentTime + 0.05;
-  function scheduleMelody() {
-    // schedule a chunk of notes ahead
-    while (t < AC.currentTime + 1.5) {
-      const note = MELODY[melodyIdx % MELODY.length];
-      if (note.f > 0) {
-        const osc = AC.createOscillator();
-        const g = AC.createGain();
-        osc.connect(g); g.connect(bgmGain);
-        osc.type = 'square';
-        osc.frequency.value = note.f;
-        g.gain.setValueAtTime(0.6, t);
-        g.gain.exponentialRampToValueAtTime(0.001, t + note.dur * 0.9);
-        osc.start(t); osc.stop(t + note.dur);
+  // 마스터 컴프레서 (클리핑 방지)
+  bgmCompressor = AC.createDynamicsCompressor();
+  bgmCompressor.threshold.value = -18;
+  bgmCompressor.knee.value = 6;
+  bgmCompressor.ratio.value = 4;
+  bgmCompressor.attack.value = 0.003;
+  bgmCompressor.release.value = 0.15;
+  bgmCompressor.connect(AC.destination);
 
-        // Harmony (lower octave)
-        const osc2 = AC.createOscillator();
-        const g2 = AC.createGain();
-        osc2.connect(g2); g2.connect(bgmGain);
-        osc2.type = 'triangle';
-        osc2.frequency.value = note.f / 2;
-        g2.gain.setValueAtTime(0.3, t);
-        g2.gain.exponentialRampToValueAtTime(0.001, t + note.dur * 0.85);
-        osc2.start(t); osc2.stop(t + note.dur);
+  // 마스터 게인
+  bgmMasterGain = AC.createGain();
+  bgmMasterGain.gain.value = 0.0;
+  bgmMasterGain.connect(bgmCompressor);
+  // 페이드인
+  bgmMasterGain.gain.linearRampToValueAtTime(0.55, AC.currentTime + 1.5);
+
+  // 멜로디 채널 (리드: 사각파 + 약간 디튠된 삼각파로 두께감)
+  const melGain = AC.createGain();
+  melGain.gain.value = 0.55;
+  melGain.connect(bgmMasterGain);
+
+  // 베이스 채널 (사인파 + 사각파 믹스)
+  const bassGain = AC.createGain();
+  bassGain.gain.value = 0.35;
+  bassGain.connect(bgmMasterGain);
+
+  // 화음 채널 (pad: 삼각파, 낮은 볼륨)
+  const chordGain = AC.createGain();
+  chordGain.gain.value = 0.18;
+  chordGain.connect(bgmMasterGain);
+
+  bgmGain = { mel: melGain, bass: bassGain, chord: chordGain };
+
+  let tMel = AC.currentTime + 0.05;
+  let tBass = AC.currentTime + 0.05;
+
+  function schedule() {
+    const LOOKAHEAD = 1.8;
+
+    // ── 멜로디 스케줄 ──
+    while (tMel < AC.currentTime + LOOKAHEAD) {
+      const [f, d] = FULL_MELODY[melodyIdx % FULL_MELODY.length];
+      if (f > 0) {
+        // 리드: 사각파 (게임보이 느낌)
+        makeOsc(f, 'square', tMel, d, 0.5, bgmGain.mel, 0);
+        // 리드 그림자: 살짝 디튠된 삼각파 (두께감)
+        makeOsc(f, 'triangle', tMel, d, 0.25, bgmGain.mel, 7);
+        // 옥타브 위 하모니 (8분음표에만, 얇게)
+        if (d <= S + 0.01) {
+          makeOsc(f * 2, 'sine', tMel, d, 0.1, bgmGain.mel, 0);
+        }
       }
-      t += note.dur;
+      tMel += d;
       melodyIdx++;
     }
+
+    // ── 베이스 스케줄 ──
+    while (tBass < AC.currentTime + LOOKAHEAD) {
+      const [bf, bd] = BASS_PATTERN[bassIdx % BASS_PATTERN.length];
+      if (bf > 0) {
+        // 베이스: 사인파 (묵직함)
+        makeOsc(bf, 'sine', tBass, bd, 0.7, bgmGain.bass, 0);
+        // 베이스 하모닉: 사각파 (약하게, 음색 추가)
+        makeOsc(bf * 2, 'square', tBass, bd * 0.5, 0.15, bgmGain.bass, 0);
+
+        // 3도 화음 패드 (매 박자마다 조용하게)
+        const chordFreq = bf * 1.26; // 단3도
+        makeOsc(chordFreq, 'triangle', tBass, bd * 0.9, 0.4, bgmGain.chord, 0);
+        makeOsc(bf * 1.5, 'triangle', tBass, bd * 0.9, 0.25, bgmGain.chord, 0); // 5도
+      }
+      tBass += bd;
+      bassIdx++;
+    }
   }
-  scheduleMelody();
-  bgmInterval = setInterval(scheduleMelody, 500);
+
+  schedule();
+  bgmInterval = setInterval(schedule, 400);
 }
 
 function stopBGM() {
   bgmOn = false;
   if (bgmInterval) { clearInterval(bgmInterval); bgmInterval = null; }
-  if (bgmGain) {
-    bgmGain.gain.exponentialRampToValueAtTime(0.0001, AC.currentTime + 0.3);
-    bgmGain = null;
+  if (bgmMasterGain) {
+    bgmMasterGain.gain.cancelScheduledValues(AC.currentTime);
+    bgmMasterGain.gain.setValueAtTime(bgmMasterGain.gain.value, AC.currentTime);
+    bgmMasterGain.gain.exponentialRampToValueAtTime(0.0001, AC.currentTime + 0.5);
+    bgmMasterGain = null;
   }
+  bgmGain = null;
+  bgmCompressor = null;
   melodyIdx = 0;
+  bassIdx = 0;
 }
 
 const musicBtn = document.getElementById('music-btn');
@@ -738,9 +1097,13 @@ function lock() {
   const { nb: withClears, count } = clearLines(nb);
   flashAndClear(nb, count, () => {
     if (count > 0) {
+      const prevScore = score;
+      const prevLevel = level;
       score += SCORE_TABLE[count] * level;
       lines += count;
       level = Math.floor(lines / 10) + 1;
+      checkScoreMilestone(prevScore, score);
+      if (level > prevLevel) checkLevelUp(level);
     }
     board = withClears;
     spawn();
@@ -765,6 +1128,7 @@ function spawn() {
     overlaySub.textContent = 'SCORE: ' + score;
     startBtn.textContent = 'RESTART';
     overlay.style.display = 'flex';
+    setTimeout(() => crashRocket(), 300);
     return;
   }
   resetTick();
@@ -923,6 +1287,369 @@ document.getElementById('board').addEventListener('touchend', e => {
     doAction('rotate');
   }
 }, { passive: true });
+
+
+// ══════════════════════════════════════════════════════════════════
+// SPACE BACKGROUND CANVAS
+// ══════════════════════════════════════════════════════════════════
+const spaceCanvas = document.getElementById('space-canvas');
+const sCtx = spaceCanvas.getContext('2d');
+let stars = [], nebulae = [], shootingStars = [];
+
+function resizeCanvas() {
+  spaceCanvas.width = window.innerWidth;
+  spaceCanvas.height = window.innerHeight;
+}
+resizeCanvas();
+window.addEventListener('resize', () => { resizeCanvas(); initStars(); });
+
+function initStars() {
+  const W = spaceCanvas.width, H = spaceCanvas.height;
+  stars = [];
+  // Layered stars: small dim + medium + bright
+  for (let i = 0; i < 320; i++) {
+    stars.push({ x: Math.random()*W, y: Math.random()*H, r: Math.random()*0.7+0.2,
+      opacity: Math.random()*0.5+0.1, twinkle: Math.random()*0.02+0.005, phase: Math.random()*Math.PI*2 });
+  }
+  for (let i = 0; i < 80; i++) {
+    stars.push({ x: Math.random()*W, y: Math.random()*H, r: Math.random()*1.2+0.6,
+      opacity: Math.random()*0.5+0.3, twinkle: Math.random()*0.03+0.01, phase: Math.random()*Math.PI*2 });
+  }
+  for (let i = 0; i < 20; i++) {
+    stars.push({ x: Math.random()*W, y: Math.random()*H, r: Math.random()*1.8+1,
+      opacity: Math.random()*0.4+0.5, twinkle: Math.random()*0.04+0.01, phase: Math.random()*Math.PI*2,
+      color: ['#aaddff','#ffeebb','#ffcccc','#ccffee'][Math.floor(Math.random()*4)] });
+  }
+  // Nebula blobs
+  nebulae = [];
+  const cols = ['rgba(30,0,80,', 'rgba(0,20,80,', 'rgba(50,0,30,', 'rgba(0,40,60,'];
+  for (let i = 0; i < 5; i++) {
+    nebulae.push({
+      x: Math.random()*W, y: Math.random()*H,
+      rx: 80+Math.random()*200, ry: 50+Math.random()*120,
+      color: cols[Math.floor(Math.random()*cols.length)],
+      opacity: Math.random()*0.25+0.08
+    });
+  }
+  // Shooting stars
+  shootingStars = [];
+}
+initStars();
+
+let spaceT = 0;
+function spawnShootingStar() {
+  const W = spaceCanvas.width, H = spaceCanvas.height;
+  shootingStars.push({
+    x: Math.random()*W*0.8, y: Math.random()*H*0.4,
+    vx: 4+Math.random()*8, vy: 1.5+Math.random()*4,
+    len: 60+Math.random()*120, life: 1, maxLife: 0.8+Math.random()*0.4
+  });
+}
+
+function drawSpace() {
+  const W = spaceCanvas.width, H = spaceCanvas.height;
+  sCtx.clearRect(0, 0, W, H);
+
+  // Deep space gradient
+  const grad = sCtx.createRadialGradient(W*0.3, H*0.2, 0, W*0.5, H*0.5, W*0.85);
+  grad.addColorStop(0,   '#06062a');
+  grad.addColorStop(0.3, '#03031a');
+  grad.addColorStop(0.7, '#020210');
+  grad.addColorStop(1,   '#000000');
+  sCtx.fillStyle = grad;
+  sCtx.fillRect(0, 0, W, H);
+
+  // Milky way band (diagonal subtle glow)
+  const mw = sCtx.createLinearGradient(0, H*0.1, W, H*0.9);
+  mw.addColorStop(0,   'rgba(20,10,50,0)');
+  mw.addColorStop(0.4, 'rgba(40,20,80,0.09)');
+  mw.addColorStop(0.6, 'rgba(20,40,80,0.07)');
+  mw.addColorStop(1,   'rgba(10,10,40,0)');
+  sCtx.fillStyle = mw;
+  sCtx.fillRect(0, 0, W, H);
+
+  // Nebulae
+  nebulae.forEach(n => {
+    const ng = sCtx.createRadialGradient(n.x, n.y, 0, n.x, n.y, Math.max(n.rx, n.ry));
+    ng.addColorStop(0, n.color + (n.opacity) + ')');
+    ng.addColorStop(1, n.color + '0)');
+    sCtx.save();
+    sCtx.scale(1, n.ry/n.rx);
+    sCtx.beginPath();
+    sCtx.arc(n.x, n.y * (n.rx/n.ry), n.rx, 0, Math.PI*2);
+    sCtx.fillStyle = ng;
+    sCtx.fill();
+    sCtx.restore();
+  });
+
+  // Stars
+  spaceT += 0.016;
+  stars.forEach(s => {
+    const op = s.opacity + Math.sin(spaceT * s.twinkle * 60 + s.phase) * 0.15;
+    sCtx.beginPath();
+    sCtx.arc(s.x, s.y, s.r, 0, Math.PI*2);
+    sCtx.fillStyle = s.color
+      ? s.color.replace(')', `,${Math.max(0,Math.min(1,op))})`) .replace('rgb','rgba')
+      : `rgba(255,255,255,${Math.max(0,Math.min(1,op))})`;
+    sCtx.fill();
+    // bright star cross-glow
+    if (s.r > 1.5) {
+      sCtx.strokeStyle = `rgba(255,255,255,${op*0.3})`;
+      sCtx.lineWidth = 0.5;
+      sCtx.beginPath();
+      sCtx.moveTo(s.x-s.r*3,s.y); sCtx.lineTo(s.x+s.r*3,s.y);
+      sCtx.moveTo(s.x,s.y-s.r*3); sCtx.lineTo(s.x,s.y+s.r*3);
+      sCtx.stroke();
+    }
+  });
+
+  // Earth glow at bottom (distant planet)
+  const eg = sCtx.createRadialGradient(W*0.5, H+60, 0, W*0.5, H+60, 260);
+  eg.addColorStop(0,   'rgba(30,80,180,0.25)');
+  eg.addColorStop(0.4, 'rgba(20,60,140,0.1)');
+  eg.addColorStop(1,   'rgba(0,0,0,0)');
+  sCtx.fillStyle = eg;
+  sCtx.fillRect(0, H-120, W, 180);
+
+  // Shooting stars
+  if (Math.random() < 0.004) spawnShootingStar();
+  shootingStars = shootingStars.filter(ss => ss.life > 0);
+  shootingStars.forEach(ss => {
+    ss.x += ss.vx; ss.y += ss.vy; ss.life -= 0.025;
+    const alpha = ss.life / ss.maxLife;
+    const sg = sCtx.createLinearGradient(ss.x-ss.vx*8, ss.y-ss.vy*8, ss.x, ss.y);
+    sg.addColorStop(0, `rgba(255,255,255,0)`);
+    sg.addColorStop(1, `rgba(255,255,255,${alpha*0.9})`);
+    sCtx.beginPath();
+    sCtx.moveTo(ss.x - ss.vx*8, ss.y - ss.vy*8);
+    sCtx.lineTo(ss.x, ss.y);
+    sCtx.strokeStyle = sg;
+    sCtx.lineWidth = 1.5;
+    sCtx.stroke();
+  });
+
+  requestAnimationFrame(drawSpace);
+}
+drawSpace();
+
+// ══════════════════════════════════════════════════════════════════
+// ROCKET LAUNCH ANIMATION
+// ══════════════════════════════════════════════════════════════════
+const launchOverlay = document.getElementById('launch-overlay');
+
+// Rocket SVG (Falcon 9 silhouette)
+const ROCKET_SVG = `
+<svg viewBox="0 0 60 160" xmlns="http://www.w3.org/2000/svg" style="width:60px;height:160px;filter:drop-shadow(0 0 6px rgba(200,220,255,0.4))">
+  <!-- Body -->
+  <rect x="22" y="40" width="16" height="90" rx="2" fill="#d0d8e8"/>
+  <!-- Nose cone -->
+  <path d="M22,40 Q22,10 30,4 Q38,10 38,40 Z" fill="#e8eef8"/>
+  <!-- SpaceX stripe -->
+  <rect x="22" y="52" width="16" height="3" fill="#c0c8d8"/>
+  <!-- SPACEX text area -->
+  <rect x="23" y="60" width="14" height="2" rx="1" fill="rgba(255,255,255,0.15)"/>
+  <!-- Interstage ring -->
+  <rect x="20" y="128" width="20" height="5" rx="1" fill="#b0b8c8"/>
+  <!-- Landing legs (folded) -->
+  <path d="M22,125 L14,135 L16,136 L22,127Z" fill="#a0a8b8"/>
+  <path d="M38,125 L46,135 L44,136 L38,127Z" fill="#a0a8b8"/>
+  <!-- Grid fins -->
+  <rect x="18" y="50" width="4" height="10" rx="1" fill="#9098a8"/>
+  <rect x="38" y="50" width="4" height="10" rx="1" fill="#9098a8"/>
+  <!-- Engine nozzle -->
+  <path d="M24,133 Q24,142 22,148 L38,148 Q36,142 36,133Z" fill="#888"/>
+  <ellipse cx="30" cy="148" rx="9" ry="3" fill="#666"/>
+  <!-- Window -->
+  <circle cx="30" cy="75" r="4" fill="rgba(100,180,255,0.4)" stroke="#8899bb" stroke-width="1"/>
+  <!-- SpaceX logo hint -->
+  <text x="30" y="96" text-anchor="middle" font-size="4" fill="rgba(255,255,255,0.5)" font-family="Arial">SpaceX</text>
+</svg>`;
+
+let rocketActive = false;
+const launchFlash = document.getElementById('launch-flash');
+
+// ── 로켓 하나 생성 ─────────────────────────────────────────────────
+function createRocket(extraStyle) {
+  const wrap = document.createElement('div');
+  wrap.className = 'rocket-wrap';
+  if (extraStyle) Object.assign(wrap.style, extraStyle);
+  wrap.innerHTML = ROCKET_SVG;
+  const exhaust = document.createElement('div');
+  exhaust.className = 'exhaust';
+  exhaust.innerHTML = '<div class="flame-core"></div><div class="flame-outer"></div>';
+  wrap.appendChild(exhaust);
+  ['','',''].forEach((_,i) => {
+    const s = document.createElement('div');
+    s.className = 'smoke-ring';
+    wrap.appendChild(s);
+  });
+  const glow = document.createElement('div');
+  glow.className = 'launch-glow';
+  wrap.appendChild(glow);
+  launchOverlay.appendChild(wrap);
+  return wrap;
+}
+
+function fireOne(animClass, extraStyle, delay) {
+  return new Promise(resolve => {
+    setTimeout(() => {
+      const wrap = createRocket(extraStyle);
+      requestAnimationFrame(() => {
+        wrap.classList.add(animClass);
+        wrap.addEventListener('animationend', () => {
+          wrap.remove();
+          resolve();
+        }, { once: true });
+      });
+    }, delay);
+  });
+}
+
+function doFlash() {
+  launchFlash.classList.remove('flashing');
+  void launchFlash.offsetWidth;
+  launchFlash.classList.add('flashing');
+}
+
+// ── 레벨별 발사 연출 ──────────────────────────────────────────────
+async function launchByLevel(lv) {
+  if (rocketActive) return;
+  rocketActive = true;
+  launchOverlay.innerHTML = '';
+
+  if (lv <= 2) {
+    // Lv1-2: 기본 중앙 발사 1발
+    doFlash();
+    await fireOne('launching', {}, 0);
+
+  } else if (lv <= 4) {
+    // Lv3-4: 나선 궤도 발사
+    doFlash();
+    await fireOne('orbit', {}, 0);
+
+  } else if (lv <= 6) {
+    // Lv5-6: 대각선 동시 2발 (V자 발사)
+    doFlash();
+    fireOne('diagonal',   {left:'20%', bottom:'-180px', transform:'rotate(-30deg)'}, 0);
+    await fireOne('diagonal-r', {left:'80%', bottom:'-180px', transform:'rotate(30deg)'}, 150);
+
+  } else if (lv <= 8) {
+    // Lv7-8: 부스터 단계 – 빠른 직선 2연발
+    doFlash();
+    await fireOne('boosted', {left:'40%'}, 0);
+    doFlash();
+    await fireOne('boosted', {left:'60%'}, 400);
+
+  } else if (lv <= 10) {
+    // Lv9-10: 3연발 (좌,중,우)
+    doFlash();
+    fireOne('diagonal',  {left:'15%', bottom:'-180px', transform:'rotate(-25deg)'}, 0);
+    fireOne('launching', {left:'50%'}, 300);
+    await fireOne('diagonal-r',{left:'85%', bottom:'-180px', transform:'rotate(25deg)'}, 600);
+
+  } else {
+    // Lv11+: 하이퍼 – 초고속 5연발 폭격
+    const positions = ['20%','35%','50%','65%','80%'];
+    doFlash();
+    for (let i = 0; i < positions.length; i++) {
+      setTimeout(() => {
+        doFlash();
+        const wrap = createRocket({left: positions[i]});
+        requestAnimationFrame(() => {
+          wrap.classList.add('hyper');
+          wrap.addEventListener('animationend', () => wrap.remove(), { once: true });
+        });
+      }, i * 200);
+    }
+    await new Promise(r => setTimeout(r, 200 * positions.length + 1800));
+  }
+
+  rocketActive = false;
+  launchOverlay.innerHTML = '';
+}
+
+// ── 게임오버 추락 ─────────────────────────────────────────────────
+function crashRocket() {
+  rocketActive = true;
+  launchOverlay.innerHTML = '';
+  const wrap = createRocket({bottom:'60%', left:'50%'});
+  wrap.querySelector('.launch-glow').style.display = 'none';
+  setTimeout(() => {
+    wrap.classList.add('crashing');
+    wrap.addEventListener('animationend', () => {
+      wrap.remove();
+      rocketActive = false;
+      launchOverlay.innerHTML = '';
+    }, { once: true });
+  }, 200);
+}
+
+// ── 점수 마일스톤 체크 ────────────────────────────────────────────
+let lastMilestone = 0;
+
+function checkScoreMilestone(prevScore, newScore) {
+  const prevM = Math.floor(prevScore / 1000);
+  const newM  = Math.floor(newScore  / 1000);
+  if (newM > prevM) {
+    setTimeout(() => {
+      showMilestoneFlash(newM * 1000, level);
+      launchByLevel(level);
+    }, 150);
+  }
+}
+
+// 레벨업 시 특별 연출 (레벨 2 이상)
+let lastRenderedLevel = 1;
+function checkLevelUp(newLevel) {
+  if (newLevel > lastRenderedLevel) {
+    lastRenderedLevel = newLevel;
+    if (newLevel >= 2) {
+      setTimeout(() => showLevelUpFlash(newLevel), 200);
+    }
+  }
+}
+
+function showMilestoneFlash(pts, lv) {
+  const LEVEL_COLORS = [
+    '#ff9500','#ff9500',           // 1-2: 주황
+    '#00e5ff','#00e5ff',           // 3-4: 하늘
+    '#ff3dff','#ff3dff',           // 5-6: 마젠타
+    '#ff4444','#ff4444',           // 7-8: 빨강
+    '#ffe600','#ffe600',           // 9-10: 금색
+  ];
+  const col = lv >= 11 ? '#ffffff' : (LEVEL_COLORS[lv-1] || '#ff9500');
+  const size = lv >= 11 ? '34px' : lv >= 7 ? '30px' : '26px';
+  const icon = lv >= 11 ? '🚀🚀🚀' : lv >= 9 ? '🚀🚀' : '🚀';
+  const el = document.createElement('div');
+  el.style.cssText = `
+    position:fixed; top:42%; left:50%; transform:translate(-50%,-50%);
+    z-index:2000; pointer-events:none;
+    color:${col}; font-family:'Courier New',monospace;
+    font-size:${size}; font-weight:bold; letter-spacing:4px;
+    text-shadow: 0 0 20px ${col}, 0 0 40px ${col}88;
+    animation: milestoneAnim 1.6s ease-out forwards;
+    white-space: nowrap;
+  `;
+  el.textContent = icon + ' ' + pts.toLocaleString() + ' !';
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 1700);
+}
+
+function showLevelUpFlash(lv) {
+  const el = document.createElement('div');
+  el.style.cssText = `
+    position:fixed; top:30%; left:50%; transform:translate(-50%,-50%);
+    z-index:2001; pointer-events:none;
+    color:#ffffff; font-family:'Courier New',monospace;
+    font-size:20px; font-weight:bold; letter-spacing:6px;
+    text-shadow: 0 0 15px #00f5ff, 0 0 30px #00ccff;
+    animation: milestoneAnim 1.2s ease-out forwards;
+    white-space: nowrap;
+  `;
+  el.textContent = '— LEVEL ' + lv + ' —';
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 1300);
+}
 
 </script>
 </body>
