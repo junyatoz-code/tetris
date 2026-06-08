@@ -39,6 +39,16 @@
     z-index: 1;
   }
   #app { display: flex; gap: var(--app-gap); align-items: flex-start; touch-action: none; position: relative; z-index: 1; }
+  #mid-row { display: contents; } /* PC에서는 투명 컨테이너 */
+  body.mobile-mode #mid-row {
+    display: flex;
+    flex-direction: row;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    align-items: stretch;
+    width: 100%;
+  }
   #board { touch-action: none; }
   #board-wrap { touch-action: none; }
 
@@ -450,6 +460,7 @@
     --panel-font: 24px;
     --label-font: 10px;
     --overlay-font: 46px;
+    --mob-panel-w: 70px;
   }
 
   /* 태블릿/작은 화면 */
@@ -467,6 +478,7 @@
       --panel-font: 18px;
       --label-font: 9px;
       --overlay-font: 34px;
+      --mob-panel-w: 76px;
     }
   }
 
@@ -485,6 +497,7 @@
       --panel-font: 15px;
       --label-font: 8px;
       --overlay-font: 28px;
+      --mob-panel-w: 64px;
     }
   }
 
@@ -503,20 +516,485 @@
       --panel-font: 13px;
       --label-font: 7px;
       --overlay-font: 24px;
+      --mob-panel-w: 54px;
     }
   }
+
+  /* ── Phase 1: Hold / Next3 / Combo / HiScore ────────────── */
+  .mini-grid {
+    display: grid;
+    grid-template-columns: repeat(4, var(--next-cell));
+    grid-template-rows: repeat(4, var(--next-cell));
+    gap: 2px; margin-top: 8px;
+  }
+  .mini-cell {
+    width: var(--next-cell); height: var(--next-cell);
+    background: rgba(8,8,20,0.5);
+    border: 1px solid rgba(255,255,255,0.04);
+    border-radius: 2px;
+  }
+  .panel.hold-panel {
+    border-color: rgba(255,180,0,0.3);
+    background: linear-gradient(145deg, rgba(255,180,0,0.06), rgba(255,180,0,0.01));
+  }
+  .panel.hold-panel .panel-label { color: rgba(255,180,0,0.7); }
+  .panel.hold-panel.used { opacity: 0.4; filter: grayscale(0.5); }
+  /* PC 모드: HOLD 패널에 C키 힌트 표시 */
+  body.pc-mode .panel.hold-panel::after {
+    content: 'C KEY';
+    display: block;
+    font-size: 8px;
+    color: rgba(255,180,0,0.35);
+    letter-spacing: 2px;
+    margin-top: 4px;
+    font-family: 'Courier New', monospace;
+  }
+  .next-sub-label {
+    color: rgba(0,200,255,0.35);
+    font-size: 8px;
+    letter-spacing: 2px;
+    margin-top: 6px;
+    margin-bottom: 3px;
+  }
+  #hiscore-val {
+    color: #ffd700;
+    text-shadow: 0 0 10px rgba(255,215,0,0.4);
+  }
+  /* Combo display */
+  #combo-display {
+    position: fixed;
+    top: 38%; left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 1500; pointer-events: none;
+    text-align: center;
+    display: none;
+  }
+  #combo-display.show { display: block; }
+  .combo-num {
+    font-family: 'Courier New', monospace;
+    font-weight: bold;
+    letter-spacing: 4px;
+    animation: comboPop 0.15s ease-out;
+  }
+  .combo-label {
+    font-family: 'Courier New', monospace;
+    letter-spacing: 3px;
+    margin-top: -4px;
+  }
+  @keyframes comboPop {
+    0%   { transform: scale(0.5); opacity:0; }
+    60%  { transform: scale(1.2); opacity:1; }
+    100% { transform: scale(1.0); opacity:1; }
+  }
+  @keyframes comboFade {
+    0%   { opacity:1; transform:translate(-50%,-50%) translateY(0); }
+    70%  { opacity:1; transform:translate(-50%,-50%) translateY(-10px); }
+    100% { opacity:0; transform:translate(-50%,-50%) translateY(-24px); }
+  }
+  #combo-display.fading {
+    animation: comboFade 0.6s ease-out forwards;
+  }
+  /* T-spin / Perfect flash */
+  #special-display {
+    position: fixed;
+    top: 28%; left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 1500; pointer-events: none;
+    font-family: 'Courier New', monospace;
+    font-weight: bold;
+    letter-spacing: 5px;
+    text-align: center;
+    display: none;
+  }
+  #special-display.show {
+    display: block;
+    animation: specialAnim 1.4s ease-out forwards;
+  }
+  @keyframes specialAnim {
+    0%   { opacity:0; transform:translate(-50%,-50%) scale(0.6) rotate(-5deg); }
+    15%  { opacity:1; transform:translate(-50%,-50%) scale(1.2) rotate(2deg); }
+    50%  { opacity:1; transform:translate(-50%,-50%) scale(1.0) rotate(0deg); }
+    100% { opacity:0; transform:translate(-50%,-50%) scale(0.9) translateY(-20px); }
+  }
+  /* New hiscore flash */
+  @keyframes hiscoreFlash {
+    0%,100% { color: #ffd700; text-shadow: 0 0 10px rgba(255,215,0,0.4); }
+    50%      { color: #fff;    text-shadow: 0 0 20px #ffd700, 0 0 40px #ffaa00; }
+  }
+  .hiscore-new { animation: hiscoreFlash 0.4s ease-in-out 4; }
+
+  /* ── 모드 선택 화면 ───────────────────────────────── */
+  #mode-screen {
+    position: fixed; inset: 0;
+    background: rgba(3,3,15,0.97);
+    backdrop-filter: blur(16px);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    z-index: 3000; gap: 0;
+  }
+  #mode-screen.hidden { display: none; }
+
+  .mode-logo {
+    font-family: 'Courier New', monospace;
+    font-size: clamp(32px, 8vw, 58px);
+    font-weight: bold;
+    color: #00f5ff;
+    letter-spacing: 10px;
+    text-shadow: 0 0 30px #00f5ff, 0 0 60px rgba(0,245,255,0.4);
+    margin-bottom: 6px;
+  }
+  .mode-sub {
+    font-family: 'Courier New', monospace;
+    font-size: clamp(9px, 2vw, 12px);
+    color: rgba(0,200,255,0.45);
+    letter-spacing: 5px;
+    margin-bottom: clamp(28px, 6vh, 48px);
+  }
+  .mode-title {
+    font-family: 'Courier New', monospace;
+    font-size: clamp(10px, 2.5vw, 13px);
+    color: rgba(255,255,255,0.4);
+    letter-spacing: 4px;
+    margin-bottom: clamp(14px, 3vh, 22px);
+  }
+  .mode-cards {
+    display: flex;
+    gap: clamp(12px, 4vw, 28px);
+    flex-wrap: wrap;
+    justify-content: center;
+    padding: 0 20px;
+  }
+  .mode-card {
+    background: linear-gradient(145deg, rgba(255,255,255,0.05), rgba(255,255,255,0.01));
+    border: 1px solid rgba(0,200,255,0.2);
+    border-radius: 16px;
+    padding: clamp(18px, 4vw, 30px) clamp(22px, 5vw, 40px);
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.25s;
+    min-width: clamp(130px, 35vw, 200px);
+    box-shadow: 0 4px 24px rgba(0,0,0,0.5);
+    font-family: 'Courier New', monospace;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .mode-card:hover, .mode-card:active {
+    border-color: rgba(0,200,255,0.7);
+    background: linear-gradient(145deg, rgba(0,200,255,0.1), rgba(0,100,255,0.05));
+    box-shadow: 0 0 30px rgba(0,200,255,0.25), 0 4px 24px rgba(0,0,0,0.5);
+    transform: translateY(-3px) scale(1.03);
+  }
+  .mode-card.pc-card:hover  { border-color: rgba(0,200,255,0.7); }
+  .mode-card.mob-card:hover { border-color: rgba(0,255,140,0.7);
+    box-shadow: 0 0 30px rgba(0,255,140,0.2), 0 4px 24px rgba(0,0,0,0.5); }
+
+  .mode-icon {
+    font-size: clamp(32px, 9vw, 52px);
+    margin-bottom: 10px;
+    line-height: 1;
+  }
+  .mode-name {
+    font-size: clamp(13px, 3.5vw, 18px);
+    font-weight: bold;
+    letter-spacing: 3px;
+    color: #fff;
+    margin-bottom: 8px;
+  }
+  .mode-card.mob-card .mode-name { color: #00ff8c; }
+  .mode-desc {
+    font-size: clamp(8px, 2vw, 10px);
+    color: rgba(255,255,255,0.35);
+    letter-spacing: 1px;
+    line-height: 1.7;
+  }
+  .mode-features {
+    margin-top: 10px;
+    font-size: clamp(8px, 1.8vw, 10px);
+    color: rgba(0,200,255,0.5);
+    line-height: 1.8;
+    text-align: left;
+  }
+  .mode-card.mob-card .mode-features { color: rgba(0,255,140,0.5); }
+
+  .mode-auto-hint {
+    margin-top: clamp(16px, 4vh, 28px);
+    font-family: 'Courier New', monospace;
+    font-size: clamp(8px, 1.8vw, 10px);
+    color: rgba(255,255,255,0.2);
+    letter-spacing: 2px;
+    text-align: center;
+  }
+  .mode-auto-hint span {
+    color: rgba(0,200,255,0.45);
+  }
+
+  /* PC 모드: 터치 컨트롤 숨김 (중복 제거됨) */
+
+  
+  /* ══ 모바일 모드 레이아웃 (전면 재설계) ══════════════════ */
+
+  /* 전체 앱: 세로 flex, 화면 꽉 채움 */
+  body.mobile-mode #app {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    padding: 0;
+    width: 100vw;
+    max-width: 100vw;
+    height: 100svh;
+    overflow: hidden;
+    box-sizing: border-box;
+  }
+
+  /* 키보드 힌트 패널 숨김 */
+  body.mobile-mode .controls-panel { display: none; }
+
+  /* ── 중간 영역: 좌패널 + 보드 + 우패널 가로 배치 ── */
+  body.mobile-mode #mid-row {
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+    flex: 1;
+    overflow: hidden;
+    min-height: 0;
+  }
+
+  /* ── 왼쪽 패널: HOLD + 점수들 세로 ── */
+  body.mobile-mode #left-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    width: var(--mob-panel-w);
+    min-width: var(--mob-panel-w);
+    max-width: var(--mob-panel-w);
+    padding: 4px 3px;
+    box-sizing: border-box;
+    justify-content: flex-start;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+  body.mobile-mode #left-panel .panel {
+    margin-bottom: 0;
+    padding: 4px 3px;
+    text-align: center;
+    box-sizing: border-box;
+    border-radius: 6px;
+    width: 100%;
+  }
+  body.mobile-mode #left-panel .panel-label {
+    font-size: 6px;
+    letter-spacing: 0.5px;
+    margin-bottom: 2px;
+  }
+  body.mobile-mode #left-panel .panel-value {
+    font-size: 10px;
+    letter-spacing: 0;
+  }
+  body.mobile-mode #left-panel .mini-grid {
+    margin-top: 3px;
+    transform-origin: top left;
+  }
+
+  /* ── 보드 중앙 영역 ── */
+  body.mobile-mode #board-col {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    overflow: hidden;
+    min-width: 0;
+    padding: 4px 0 0;
+  }
+  body.mobile-mode #board-wrap {
+    flex-shrink: 0;
+  }
+
+  /* ── 오른쪽 패널: NEXT + 기능버튼 세로 ── */
+  body.mobile-mode #right-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    width: var(--mob-panel-w);
+    min-width: var(--mob-panel-w);
+    max-width: var(--mob-panel-w);
+    padding: 4px 3px;
+    box-sizing: border-box;
+    justify-content: flex-start;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+  body.mobile-mode #right-panel .panel {
+    display: block;
+    margin-bottom: 0;
+    padding: 4px 3px;
+    text-align: center;
+    box-sizing: border-box;
+    border-radius: 6px;
+    width: 100%;
+    overflow: hidden;
+  }
+  body.mobile-mode #right-panel .panel-label {
+    font-size: 6px;
+    letter-spacing: 0.5px;
+    margin-bottom: 2px;
+  }
+  body.mobile-mode .next-sub-label {
+    font-size: 6px;
+    margin-top: 3px;
+    margin-bottom: 2px;
+  }
+  body.mobile-mode .mini-grid {
+    gap: 1px !important;
+  }
+
+  /* 기능 버튼 (BGM/일시정지/종료) — 우측 패널 내 세로 배치 */
+  body.mobile-mode .right-bottom-btns {
+    position: static;
+    flex-direction: column;
+    gap: 4px;
+    padding: 0;
+    background: none;
+    border: none;
+    backdrop-filter: none;
+    margin-top: 4px;
+  }
+  body.mobile-mode .right-bottom-btns .side-btn {
+    width: 100%;
+    padding: 5px 2px;
+    font-size: 6.5px;
+    letter-spacing: 0;
+    border-radius: 6px;
+    margin-bottom: 0;
+    text-align: center;
+    box-sizing: border-box;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.3;
+  }
+
+  /* ── 하단 조작 키패드 ── */
+  body.mobile-mode #touch-controls {
+    flex-shrink: 0;
+    padding: 6px 8px;
+    padding-bottom: calc(8px + env(safe-area-inset-bottom));
+    background: rgba(3,3,15,0.85);
+    border-top: 1px solid rgba(0,200,255,0.12);
+    margin: 0;
+    width: 100%;
+    box-sizing: border-box;
+  }
+  body.mobile-mode .touch-row {
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+  body.mobile-mode .touch-row:last-child { margin-bottom: 0; }
+  body.mobile-mode .t-btn {
+    width: var(--t-btn);
+    height: var(--t-btn);
+  }
+  body.mobile-mode .t-btn.drop-btn {
+    width: 180px;
+    height: var(--t-drop-h);
+  }
+
+  /* PC 모드: 터치 컨트롤 숨김 */
+  body.pc-mode #touch-controls { display: none !important; }
+
+  /* PC 모드: right-bottom-btns 세로 */
+  body.pc-mode .right-bottom-btns {
+    flex-direction: column;
+    position: static;
+    background: none;
+    border: none;
+    padding: 0;
+    gap: 8px;
+  }
+
+
+  /* 모드 뱃지 (우측 상단) */
+  #mode-badge {
+    position: fixed; top: 10px; right: 12px;
+    z-index: 100;
+    font-family: 'Courier New', monospace;
+    font-size: 9px;
+    letter-spacing: 2px;
+    padding: 4px 10px;
+    border-radius: 20px;
+    pointer-events: none;
+    opacity: 0.5;
+  }
+  body.pc-mode #mode-badge {
+    background: rgba(0,200,255,0.1);
+    border: 1px solid rgba(0,200,255,0.25);
+    color: rgba(0,200,255,0.8);
+  }
+  body.mobile-mode #mode-badge {
+    background: rgba(0,255,140,0.1);
+    border: 1px solid rgba(0,255,140,0.25);
+    color: rgba(0,255,140,0.8);
+  }
+
+  
 </style>
 </head>
 <body>
 <canvas id="space-canvas"></canvas>
 <div id="launch-overlay"></div>
+
+<!-- 모드 선택 화면 -->
+<div id="mode-screen">
+  <div class="mode-logo">TETRIS</div>
+  <div class="mode-sub">SPACE X EDITION</div>
+  <div class="mode-title">— 플레이 환경을 선택하세요 —</div>
+  <div class="mode-cards">
+    <div class="mode-card pc-card" id="btn-pc-mode">
+      <div class="mode-icon">🖥️</div>
+      <div class="mode-name">PC MODE</div>
+      <div class="mode-desc">데스크탑 / 노트북</div>
+      <div class="mode-features">
+        ✦ 키보드 방향키 조작<br>
+        ✦ C키 홀드<br>
+        ✦ SPACE 즉시낙하<br>
+        ✦ 넓은 화면 레이아웃
+      </div>
+    </div>
+    <div class="mode-card mob-card" id="btn-mobile-mode">
+      <div class="mode-icon">📱</div>
+      <div class="mode-name">MOBILE</div>
+      <div class="mode-desc">스마트폰 / 태블릿</div>
+      <div class="mode-features">
+        ✦ 화면 터치 버튼<br>
+        ✦ 핀치줌 방지<br>
+        ✦ 세로모드 최적화<br>
+        ✦ 컴팩트 레이아웃
+      </div>
+    </div>
+  </div>
+  <div class="mode-auto-hint">자동 감지: <span id="auto-detect-hint"></span></div>
+</div>
+
+<!-- 모드 뱃지 -->
+<div id="mode-badge"></div>
 <div id="launch-flash"></div>
+<div id="combo-display"><div class="combo-num" id="combo-num"></div><div class="combo-label" id="combo-label"></div></div>
+<div id="special-display"></div>
 <div id="app">
+  <!-- 모바일: 중간 행 래퍼 (좌패널+보드+우패널) -->
+  <div id="mid-row">
   <!-- Left -->
   <div id="left-panel">
+    <div class="panel hold-panel" id="hold-panel">
+      <div class="panel-label">HOLD</div>
+      <div class="mini-grid" id="hold-grid"></div>
+    </div>
     <div class="panel">
       <div class="panel-label">SCORE</div>
       <div class="panel-value" id="score">000000</div>
+    </div>
+    <div class="panel">
+      <div class="panel-label">BEST</div>
+      <div class="panel-value" id="hiscore-val">000000</div>
     </div>
     <div class="panel">
       <div class="panel-label">LINES</div>
@@ -527,11 +1005,11 @@
       <div class="panel-value" id="level">1</div>
     </div>
     <div class="controls-panel">
-      <div>← → &nbsp; 이동</div>
-      <div>↑ &nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 회전</div>
-      <div>↓ &nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 내리기</div>
-      <div>SPACE &nbsp;낙하</div>
-
+      <div>← → 이동</div>
+      <div>↑ &nbsp;&nbsp; 회전</div>
+      <div>↓ &nbsp;&nbsp; 내리기</div>
+      <div>C &nbsp;&nbsp; 홀드</div>
+      <div>SPC 낙하</div>
     </div>
   </div>
 
@@ -549,7 +1027,7 @@
   <!-- Touch Controls -->
   <div id="touch-controls">
     <div class="touch-row">
-      <div class="t-spacer"></div>
+      <button class="t-btn" id="btn-hold" style="font-size:11px;letter-spacing:1px;">HOLD</button>
       <button class="t-btn rotate-btn" id="btn-rotate">↻</button>
       <div class="t-spacer"></div>
     </div>
@@ -568,23 +1046,79 @@
   <div id="right-panel">
     <div class="panel">
       <div class="panel-label">NEXT</div>
-      <div id="next-grid"></div>
+      <div class="mini-grid" id="next-grid-1"></div>
+      <div class="next-sub-label">2ND</div>
+      <div class="mini-grid" id="next-grid-2"></div>
+      <div class="next-sub-label">3RD</div>
+      <div class="mini-grid" id="next-grid-3"></div>
     </div>
-    <button id="music-btn" class="side-btn">♪ BGM ON</button>
-    <button id="pause-btn" class="side-btn" disabled>⏸ 일시정지</button>
-    <button id="end-btn" class="side-btn" disabled>■ 게임종료</button>
+    <div class="right-bottom-btns">
+      <button id="music-btn" class="side-btn">♪ BGM</button>
+      <button id="pause-btn" class="side-btn" disabled>⏸ 정지</button>
+      <button id="end-btn" class="side-btn" disabled>■ 종료</button>
+    </div>
   </div>
+  </div><!-- /mid-row -->
 </div>
 
 <script>
+// ══════════════════════════════════════════════════════════════════
+// 모드 선택 시스템
+// ══════════════════════════════════════════════════════════════════
+let currentMode = null; // 'pc' | 'mobile'
+
+// 기기 자동 감지
+function detectDevice() {
+  const isTouchDevice = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+  const isNarrow = window.innerWidth <= 768;
+  return (isTouchDevice || isNarrow) ? 'mobile' : 'pc';
+}
+
+// 자동감지 힌트 표시
+const autoHint = document.getElementById('auto-detect-hint');
+const detected = detectDevice();
+autoHint.textContent = detected === 'mobile' ? '📱 모바일 권장' : '🖥️ PC 권장';
+
+// 모드 적용
+function applyMode(mode) {
+  currentMode = mode;
+  document.body.classList.remove('pc-mode', 'mobile-mode');
+  document.body.classList.add(mode === 'pc' ? 'pc-mode' : 'mobile-mode');
+
+  const badge = document.getElementById('mode-badge');
+  badge.textContent = mode === 'pc' ? '🖥 PC MODE' : '📱 MOBILE';
+
+  // PC 모드: 터치 방해 요소 비활성화
+  if (mode === 'pc') {
+    document.removeEventListener('touchmove', preventTouch);
+    // 키보드 힌트 보이기
+    document.querySelectorAll('.controls-panel').forEach(el => el.style.display = '');
+  }
+
+  // 모바일 모드: 터치 최적화
+  if (mode === 'mobile') {
+    document.addEventListener('touchmove', preventTouch, { passive: false });
+  }
+
+  // 모드 화면 닫기
+  document.getElementById('mode-screen').classList.add('hidden');
+}
+
+function preventTouch(e) { e.preventDefault(); }
+
+// 모드 버튼 이벤트
+document.getElementById('btn-pc-mode').addEventListener('click', () => applyMode('pc'));
+document.getElementById('btn-pc-mode').addEventListener('touchend', e => { e.preventDefault(); applyMode('pc'); });
+document.getElementById('btn-mobile-mode').addEventListener('click', () => applyMode('mobile'));
+document.getElementById('btn-mobile-mode').addEventListener('touchend', e => { e.preventDefault(); applyMode('mobile'); });
+
 // ─── Block default touch behaviors (pinch zoom, scroll, double-tap zoom) ────
 document.addEventListener('touchstart', e => {
   if (e.touches.length > 1) e.preventDefault(); // block pinch zoom
 }, { passive: false });
 
-document.addEventListener('touchmove', e => {
-  e.preventDefault(); // block scroll & pinch zoom during game
-}, { passive: false });
+// touchmove는 모바일 모드 선택 시에만 preventTouch로 등록됨
+// (모드 선택 전엔 모드화면 스크롤 허용)
 
 document.addEventListener('touchend', e => {
   if (e.touches.length > 0) e.preventDefault();
@@ -919,8 +1453,10 @@ endBtn.addEventListener('click', () => {
   clearInterval(tickId);
   if (bgmOn) stopBGM();
   started = false; gameOver = false; paused = false;
-  piece = null;
+  piece = null; holdPiece = null; holdUsed = false;
+  combo = 0; nextQueue = [];
   board = emptyBoard();
+  comboDisplay.className = '';
   const po = document.getElementById('pause-overlay');
   if (po) po.remove();
   pauseBtn.disabled = true;
@@ -970,7 +1506,15 @@ const SHAPES = {
 };
 const PIECE_KEYS = Object.keys(PIECES);
 
-let board, piece, pos, nextPiece, score, lines, level, gameOver, started, paused, tickId;
+let board, piece, pos, score, lines, level, gameOver, started, paused, tickId;
+// Phase 1: Next queue, Hold, Combo
+let nextQueue = [];       // 다음 블럭 3개 큐
+let holdPiece = null;     // 홀드된 블럭
+let holdUsed = false;     // 이번 블럭에서 홀드 사용 여부
+let combo = 0;            // 연속 라인클리어 콤보 수
+let lastWasTspin = false; // T스핀 감지용
+let hiScore = 0;
+try { hiScore = parseInt(localStorage.getItem('tetris_hiscore') || '0'); } catch(e) { hiScore = 0; }
 
 function emptyBoard() {
   return Array.from({length: H}, () => Array(W).fill(null));
@@ -979,6 +1523,34 @@ function randPiece() {
   const k = PIECE_KEYS[Math.floor(Math.random() * PIECE_KEYS.length)];
   return { ...PIECES[k], shape: SHAPES[k].map(r => [...r]), type: k };
 }
+// 다음 블럭 큐 관리
+function fillQueue() {
+  while (nextQueue.length < 3) nextQueue.push(randPiece());
+}
+function peekNext() { return nextQueue[0]; }
+function popNext() {
+  fillQueue();
+  const p = nextQueue.shift();
+  fillQueue();
+  return p;
+}
+
+// T-스핀 감지 (T블럭 회전 착지 시 코너 3개 이상 막혀있으면 T스핀)
+function checkTspin(b, shape, p, lastRotated) {
+  if (!lastRotated) return false;
+  if (piece.type !== 'T') return false;
+  const corners = [
+    {r: p.y, c: p.x},
+    {r: p.y, c: p.x+2},
+    {r: p.y+2, c: p.x},
+    {r: p.y+2, c: p.x+2}
+  ];
+  const filled = corners.filter(({r,c}) =>
+    r < 0 || r >= H || c < 0 || c >= W || (b[r] && b[r][c])
+  ).length;
+  return filled >= 3;
+}
+
 function rotate(shape) {
   const rows = shape.length, cols = shape[0].length;
   return Array.from({length: cols}, (_, c) =>
@@ -1022,7 +1594,7 @@ const startBtn = document.getElementById('start-btn');
 const scoreEl = document.getElementById('score');
 const linesEl = document.getElementById('lines');
 const levelEl = document.getElementById('level');
-const nextGrid = document.getElementById('next-grid');
+// next-grid (구버전 참조 제거됨)
 
 // Build board cells
 const cells = [];
@@ -1036,15 +1608,57 @@ for (let r = 0; r < H; r++) {
   }
 }
 
-// Build next cells
-const nextCells = [];
-for (let r = 0; r < 4; r++) {
-  nextCells[r] = [];
-  for (let c = 0; c < 4; c++) {
-    const div = document.createElement('div');
-    div.className = 'next-cell';
-    nextGrid.appendChild(div);
-    nextCells[r][c] = div;
+// Build 3x next grids + hold grid
+function buildMiniGrid(containerId) {
+  const el = document.getElementById(containerId);
+  el.innerHTML = '';
+  const cells = [];
+  for (let r = 0; r < 4; r++) {
+    cells[r] = [];
+    for (let c = 0; c < 4; c++) {
+      const div = document.createElement('div');
+      div.className = 'mini-cell';
+      el.appendChild(div);
+      cells[r][c] = div;
+    }
+  }
+  return cells;
+}
+const nextCells1 = buildMiniGrid('next-grid-1');
+const nextCells2 = buildMiniGrid('next-grid-2');
+const nextCells3 = buildMiniGrid('next-grid-3');
+const holdCells  = buildMiniGrid('hold-grid');
+const hiScoreEl  = document.getElementById('hiscore-val');
+const holdPanel  = document.getElementById('hold-panel');
+const comboDisplay = document.getElementById('combo-display');
+const comboNumEl   = document.getElementById('combo-num');
+const comboLabelEl = document.getElementById('combo-label');
+const specialDisplay = document.getElementById('special-display');
+
+function renderMiniGrid(cells, p) {
+  if (!p) {
+    for (let r=0;r<4;r++) for (let c=0;c<4;c++) {
+      cells[r][c].style.background=''; cells[r][c].style.boxShadow='';
+      cells[r][c].style.border='1px solid rgba(255,255,255,0.04)';
+    }
+    return;
+  }
+  const offR = Math.floor((4 - p.shape.length) / 2);
+  const offC = Math.floor((4 - p.shape[0].length) / 2);
+  for (let r=0;r<4;r++) for (let c=0;c<4;c++) {
+    const pr=r-offR, pc=c-offC;
+    const filled = pr>=0&&pr<p.shape.length&&pc>=0&&pc<p.shape[0].length&&p.shape[pr][pc];
+    const el = cells[r][c];
+    if (filled) {
+      el.style.background = `linear-gradient(135deg,${p.hi} 0%,${p.color} 40%,${p.sh} 100%)`;
+      el.style.boxShadow = `inset 1px 1px 0 ${p.hi}bb, inset -1px -1px 0 ${p.sh}bb`;
+      el.style.border = `1px solid ${p.sh}`;
+      el.style.borderRadius = '2px';
+    } else {
+      el.style.background=''; el.style.boxShadow='';
+      el.style.border='1px solid rgba(255,255,255,0.04)';
+      el.style.borderRadius='';
+    }
   }
 }
 
@@ -1113,35 +1727,18 @@ function render() {
     }
   }
 
-  // Next piece
-  const offR = Math.floor((4 - nextPiece.shape.length) / 2);
-  const offC = Math.floor((4 - nextPiece.shape[0].length) / 2);
-  for (let r = 0; r < 4; r++)
-    for (let c = 0; c < 4; c++) {
-      const pr = r - offR, pc = c - offC;
-      const filled = pr >= 0 && pr < nextPiece.shape.length &&
-                     pc >= 0 && pc < nextPiece.shape[0].length &&
-                     nextPiece.shape[pr][pc];
-      const el = nextCells[r][c];
-      if (filled) {
-        el.className = 'next-cell';
-        const { color, hi, sh } = nextPiece;
-        el.style.background = `linear-gradient(135deg, ${hi} 0%, ${color} 40%, ${sh} 100%)`;
-        el.style.boxShadow = `inset 1px 1px 0 ${hi}bb, inset -1px -1px 0 ${sh}bb`;
-        el.style.border = `1px solid ${sh}`;
-        el.style.borderRadius = '3px';
-      } else {
-        el.className = 'next-cell';
-        el.style.background = '';
-        el.style.boxShadow = '';
-        el.style.border = '1px solid rgba(255,255,255,0.04)';
-        el.style.borderRadius = '';
-      }
-    }
-
+  // Next 3개 렌더
+  renderMiniGrid(nextCells1, nextQueue[0] || null);
+  renderMiniGrid(nextCells2, nextQueue[1] || null);
+  renderMiniGrid(nextCells3, nextQueue[2] || null);
+  // Hold 렌더
+  renderMiniGrid(holdCells, holdPiece);
+  holdPanel.classList.toggle('used', holdUsed);
+  // 점수
   scoreEl.textContent = String(score).padStart(6, '0');
   linesEl.textContent = lines;
   levelEl.textContent = level;
+  hiScoreEl.textContent = String(hiScore).padStart(6, '0');
 }
 
 // ─── Flash & Clear ───────────────────────────────────────────────────────────
@@ -1161,30 +1758,111 @@ function flashAndClear(b, count, callback) {
   }, 200);
 }
 
+// ─── Combo & Special Display ─────────────────────────────────────────────────
+let comboFadeTimer = null;
+function showCombo(c, multiplier) {
+  if (c < 2) { comboDisplay.className = ''; return; }
+  const colors = ['','','#00e5ff','#00ff88','#ffdd00','#ff9500','#ff3dff','#ff4444','#ffffff','#ffffff','#ffffff'];
+  const col = c >= 10 ? '#fff' : (colors[c] || '#ff9500');
+  const size = c >= 8 ? '38px' : c >= 5 ? '32px' : '26px';
+  comboNumEl.textContent = c + ' COMBO!';
+  comboNumEl.style.cssText = `font-size:${size};color:${col};text-shadow:0 0 20px ${col},0 0 40px ${col}88;`;
+  comboLabelEl.textContent = 'x' + multiplier.toFixed(1) + ' BONUS';
+  comboLabelEl.style.cssText = `font-size:14px;color:${col}88;`;
+  comboDisplay.className = 'show';
+  if (comboFadeTimer) clearTimeout(comboFadeTimer);
+  comboFadeTimer = setTimeout(() => { comboDisplay.className = 'show fading'; }, 800);
+}
+
+function showSpecial(text, color) {
+  specialDisplay.textContent = text;
+  specialDisplay.style.cssText = `font-size:28px;color:${color};text-shadow:0 0 20px ${color},0 0 50px ${color}66;display:block;`;
+  specialDisplay.className = 'show';
+  setTimeout(() => { specialDisplay.className = ''; specialDisplay.style.display='none'; }, 1500);
+}
+
 // ─── Game Flow ───────────────────────────────────────────────────────────────
+let isLocking = false; // 이중 lock 방지 플래그
+
 function lock() {
+  if (isLocking) return; // 이미 lock 처리 중이면 무시
+  isLocking = true;
+  clearInterval(tickId); // lock 처리 중 tick 멈춤
   sfxLand();
+  holdUsed = false; // 착지하면 홀드 다시 사용 가능
   const nb = placePiece(board, piece.shape, pos, piece);
+
+  // T-스핀 감지
+  const isTspin = lastWasTspin && checkTspin(nb, piece.shape, pos, lastWasTspin);
+  lastWasTspin = false;
+
   const { nb: withClears, count } = clearLines(nb);
   flashAndClear(nb, count, () => {
     if (count > 0) {
+      // 콤보 업데이트
+      combo++;
+      const comboMult = Math.min(1 + (combo - 1) * 0.5, 5.0);
+
+      // T-스핀 보너스
+      let baseScore = SCORE_TABLE[count];
+      if (isTspin) {
+        baseScore *= 3;
+        showSpecial(count === 4 ? 'T-SPIN TETRIS!!' : 'T-SPIN!', '#ff3dff');
+      }
+
+      // 퍼펙트 클리어 체크
+      const isPerfect = withClears.every(row => row.every(c => !c));
+      if (isPerfect) {
+        baseScore *= 10;
+        showSpecial('PERFECT CLEAR!!', '#ffd700');
+        setTimeout(() => {
+          for(let i=0;i<5;i++) setTimeout(()=>launchByLevel(99), i*180);
+        }, 200);
+      }
+
       const prevScore = score;
       const prevLevel = level;
-      score += SCORE_TABLE[count] * level;
+      score += Math.round(baseScore * level * comboMult);
       lines += count;
       level = Math.floor(lines / 10) + 1;
+
+      // 콤보 표시 (2연속부터)
+      showCombo(combo, comboMult);
+
+      // 4줄(테트리스) 즉시 로켓 발사
+      if (count === 4 && !isPerfect) {
+        setTimeout(() => launchByLevel(level), 100);
+      }
+      // 고콤보 로켓
+      if (combo >= 4 && !isPerfect) {
+        setTimeout(() => launchByLevel(Math.min(combo, 11)), 200);
+      }
+
       checkScoreMilestone(prevScore, score);
       if (level > prevLevel) checkLevelUp(level);
+
+      // 하이스코어 갱신
+      if (score > hiScore) {
+        hiScore = score;
+        try { localStorage.setItem('tetris_hiscore', hiScore); } catch(e) {}
+        hiScoreEl.classList.add('hiscore-new');
+        setTimeout(() => hiScoreEl.classList.remove('hiscore-new'), 1800);
+      }
+    } else {
+      // 라인 클리어 없으면 콤보 리셋
+      combo = 0;
+      comboDisplay.className = '';
     }
     board = withClears;
+    isLocking = false; // lock 처리 완료
     spawn();
   });
 }
 
 function spawn() {
-  piece = nextPiece;
-  nextPiece = randPiece();
+  piece = popNext();
   pos = { x: Math.floor((W - piece.shape[0].length) / 2), y: 0 };
+  lastWasTspin = false;
   if (!valid(board, piece.shape, pos)) {
     piece = null; gameOver = true;
     clearInterval(tickId);
@@ -1196,8 +1874,22 @@ function spawn() {
     pauseBtn.textContent = '⏸ 일시정지';
     render();
     overlayTitle.textContent = 'GAME\nOVER';
-    overlaySub.textContent = 'SCORE: ' + score;
+    overlaySub.textContent = 'SCORE: ' + score + '\nBEST: ' + hiScore;
     startBtn.textContent = 'RESTART';
+    // 모드변경 버튼 추가
+    let modeChangeBtn = document.getElementById('mode-change-btn');
+    if (!modeChangeBtn) {
+      modeChangeBtn = document.createElement('button');
+      modeChangeBtn.id = 'mode-change-btn';
+      modeChangeBtn.style.cssText = 'background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.4);padding:7px 20px;font-size:10px;letter-spacing:3px;cursor:pointer;border-radius:4px;font-family:Courier New,monospace;margin-top:-8px;';
+      modeChangeBtn.textContent = '⇄ 모드변경';
+      modeChangeBtn.addEventListener('click', () => {
+        overlay.style.display = 'none';
+        document.getElementById('mode-screen').classList.remove('hidden');
+      });
+      overlay.appendChild(modeChangeBtn);
+    }
+    modeChangeBtn.style.display = 'block';
     overlay.style.display = 'flex';
     setTimeout(() => crashRocket(), 300);
     return;
@@ -1213,19 +1905,51 @@ function resetTick() {
 }
 
 function tick() {
-  if (paused || gameOver || !started) return;
+  if (paused || gameOver || !started || isLocking) return;
+  if (!piece) return;
   const np = { x: pos.x, y: pos.y + 1 };
   if (valid(board, piece.shape, np)) { pos = np; render(); }
   else lock();
 }
 
+function doHold() {
+  // 게임 상태 체크
+  if (!started || gameOver || paused) return;
+  if (!piece) return;           // 블럭 없으면 무시
+  if (holdUsed) return;         // 이번 블럭에서 이미 홀드 사용
+  if (isLocking) return;        // lock 처리 중이면 무시
+
+  holdUsed = true;
+  clearInterval(tickId);        // 홀드 처리 중 tick 멈춤
+
+  if (!holdPiece) {
+    // 처음 홀드: 현재 블럭 창고에 저장 → 다음 블럭 소환
+    holdPiece = { ...piece, shape: SHAPES[piece.type].map(r=>[...r]) };
+    piece = popNext();
+  } else {
+    // 홀드 교환: 현재 ↔ 창고
+    const temp = holdPiece;
+    holdPiece = { ...piece, shape: SHAPES[piece.type].map(r=>[...r]) };
+    piece = { ...temp, shape: temp.shape.map(r=>[...r]) };
+  }
+
+  // 새 블럭 위치 초기화
+  pos = { x: Math.floor((W - piece.shape[0].length) / 2), y: 0 };
+  lastWasTspin = false;
+
+  sfxRotate();
+  render();
+  resetTick();  // tick 재시작
+}
+
 function hardDrop() {
+  if (isLocking) return;
   sfxDrop();
   let np = {...pos};
   while (valid(board, piece.shape, {x: np.x, y: np.y+1})) np.y++;
   pos = np;
   render();
-  setTimeout(() => lock(), 0);
+  lock(); // setTimeout 제거 → 즉시 lock (tick과 경쟁 방지)
 }
 
 // ─── Input ───────────────────────────────────────────────────────────────────
@@ -1246,21 +1970,38 @@ document.addEventListener('keydown', e => {
     else lock();
   } else if (e.key === 'ArrowUp') {
     const rot = rotate(piece.shape);
-    if (valid(board, rot, pos)) { piece = {...piece, shape: rot}; sfxRotate(); render(); }
+    if (valid(board, rot, pos)) {
+      piece = {...piece, shape: rot};
+      lastWasTspin = (piece.type === 'T');
+      sfxRotate(); render();
+    }
   } else if (e.key === ' ') {
     e.preventDefault(); hardDrop();
+  } else if (e.key === 'c' || e.key === 'C') {
+    doHold();
   }
 });
 
 startBtn.addEventListener('click', () => {
+  // 모드 미선택 시 모드 화면으로
+  if (!currentMode) {
+    document.getElementById('mode-screen').classList.remove('hidden');
+    return;
+  }
   resumeAC();
   board = emptyBoard();
   score = 0; lines = 0; level = 1;
   gameOver = false; started = true; paused = false;
-  nextPiece = randPiece();
+  combo = 0; holdPiece = null; holdUsed = false; lastWasTspin = false;
+  isLocking = false; lastRenderedLevel = 1;
+  safeSetRocketActive(false);
+  nextQueue = [];
+  fillQueue();
   overlay.style.display = 'none';
   pauseBtn.disabled = false;
   endBtn.disabled = false;
+  comboDisplay.className = '';
+  specialDisplay.className = '';
   const po = document.getElementById('pause-overlay');
   if (po) po.remove();
   spawn();
@@ -1281,7 +2022,13 @@ function doAction(action) {
     else lock();
   } else if (action === 'rotate') {
     const rot = rotate(piece.shape);
-    if (valid(board, rot, pos)) { piece = {...piece, shape: rot}; sfxRotate(); render(); }
+    if (valid(board, rot, pos)) {
+      piece = {...piece, shape: rot};
+      lastWasTspin = (piece.type === 'T');
+      sfxRotate(); render();
+    }
+  } else if (action === 'hold') {
+    doHold();
   } else if (action === 'drop') {
     hardDrop();
   }
@@ -1339,6 +2086,7 @@ bindBtn('btn-right',  'right',  true);
 bindBtn('btn-down',   'down',   true);
 bindBtn('btn-rotate', 'rotate', false);
 bindBtn('btn-drop',   'drop',   false);
+bindBtn('btn-hold',   'hold',   false);
 
 // Swipe gesture on board
 let touchStartX = 0, touchStartY = 0, touchStartTime = 0;
@@ -1537,7 +2285,20 @@ const ROCKET_SVG = `
 </svg>`;
 
 let rocketActive = false;
+let rocketSafetyTimer = null;
 const launchFlash = document.getElementById('launch-flash');
+
+// rocketActive stuck 방지 (애니메이션 이벤트 미발생 대비)
+function safeSetRocketActive(val) {
+  rocketActive = val;
+  if (rocketSafetyTimer) clearTimeout(rocketSafetyTimer);
+  if (val) {
+    rocketSafetyTimer = setTimeout(() => {
+      rocketActive = false;
+      launchOverlay.innerHTML = '';
+    }, 6000); // 6초 후 강제 해제
+  }
+}
 
 // ── 로켓 하나 생성 ─────────────────────────────────────────────────
 function createRocket(extraStyle) {
@@ -1585,7 +2346,7 @@ function doFlash() {
 // ── 레벨별 발사 연출 ──────────────────────────────────────────────
 async function launchByLevel(lv) {
   if (rocketActive) return;
-  rocketActive = true;
+  safeSetRocketActive(true);
   launchOverlay.innerHTML = '';
 
   if (lv <= 2) {
@@ -1635,13 +2396,13 @@ async function launchByLevel(lv) {
     await new Promise(r => setTimeout(r, 200 * positions.length + 1800));
   }
 
-  rocketActive = false;
+  safeSetRocketActive(false);
   launchOverlay.innerHTML = '';
 }
 
 // ── 게임오버 추락 ─────────────────────────────────────────────────
 function crashRocket() {
-  rocketActive = true;
+  safeSetRocketActive(true);
   launchOverlay.innerHTML = '';
   const wrap = createRocket({bottom:'60%', left:'50%'});
   wrap.querySelector('.launch-glow').style.display = 'none';
@@ -1649,7 +2410,7 @@ function crashRocket() {
     wrap.classList.add('crashing');
     wrap.addEventListener('animationend', () => {
       wrap.remove();
-      rocketActive = false;
+      safeSetRocketActive(false);
       launchOverlay.innerHTML = '';
     }, { once: true });
   }, 200);
